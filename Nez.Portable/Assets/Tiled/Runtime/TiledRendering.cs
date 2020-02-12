@@ -18,9 +18,11 @@ namespace Nez.Tiled
 		/// <param name="layerDepth"></param>
 		public static void RenderMap(TmxMap map, Batcher batcher, Vector2 position, Vector2 scale, float layerDepth)
 		{
-			foreach (var layer in map.Layers)
+
+            foreach (var layer in map.Layers)
 			{
-				if (layer is TmxLayer tmxLayer && tmxLayer.Visible)
+
+                if (layer is TmxLayer tmxLayer && tmxLayer.Visible)
 					RenderLayer(tmxLayer, batcher, position, scale, layerDepth);
 				else if (layer is TmxImageLayer tmxImageLayer && tmxImageLayer.Visible)
 					RenderImageLayer(tmxImageLayer, batcher, position, scale, layerDepth);
@@ -36,7 +38,7 @@ namespace Nez.Tiled
 		/// </summary>
 		public static void RenderLayer(ITmxLayer layer, Batcher batcher, Vector2 position, Vector2 scale, float layerDepth, RectangleF cameraClipBounds)
 		{
-			if (layer is TmxLayer tmxLayer && tmxLayer.Visible)
+            if (layer is TmxLayer tmxLayer && tmxLayer.Visible)
 				RenderLayer(tmxLayer, batcher, position, scale, layerDepth, cameraClipBounds);
 			else if (layer is TmxImageLayer tmxImageLayer && tmxImageLayer.Visible)
 				RenderImageLayer(tmxImageLayer, batcher, position, scale, layerDepth);
@@ -64,14 +66,35 @@ namespace Nez.Tiled
 
 			var color = Color.White;
 			color.A = (byte)(layer.Opacity * 255);
+            
+			switch (layer.Map.Orientation) {
+				case OrientationType.Hexagonal:
+					var minX=0;
+					var maxX=layer.Map.Width-1;
+					var minY=0;
+					var maxY=layer.Map.Height-1;
 
-			for (var i = 0; i < layer.Tiles.Length; i++)
-			{
-				var tile = layer.Tiles[i];
-				if (tile == null)
-					continue;
-
-				RenderTile(tile, batcher, position, scale, tileWidth, tileHeight, color, layerDepth);
+					for (var y = minY;y<=maxY;y++) {
+						for (var x = minX;x<=maxX;x+=2) {
+							var tile = layer.GetTile(x,y);
+							if (tile!=null)
+								RenderHexTile(tile,layer,batcher,position,scale,tileWidth,tileHeight,color,layerDepth);
+						}
+						for (var x = minX+1;x<=maxX;x+=2) {
+							var tile = layer.GetTile(x,y);
+							if (tile!=null)
+								RenderHexTile(tile,layer,batcher,position,scale,tileWidth,tileHeight,color,layerDepth);
+						}
+					}
+				break;
+				default:
+					for (var i = 0;i<layer.Tiles.Length;i++) {
+						var tile = layer.Tiles[i];
+						if (tile==null)
+							continue;
+						RenderTile(tile,batcher,position,scale,tileWidth,tileHeight,color,layerDepth);
+					}
+				break;
 			}
 		}
 
@@ -86,7 +109,8 @@ namespace Nez.Tiled
 		/// <param name="cameraClipBounds"></param>
 		public static void RenderLayer(TmxLayer layer, Batcher batcher, Vector2 position, Vector2 scale, float layerDepth, RectangleF cameraClipBounds)
 		{
-			if (!layer.Visible)
+
+            if (!layer.Visible)
 				return;
 
 			position += layer.Offset;
@@ -98,6 +122,7 @@ namespace Nez.Tiled
 			var tileHeight = layer.Map.TileHeight * scale.Y;
 
 			int minX, minY, maxX, maxY;
+
 			if (layer.Map.RequiresLargeTileCulling)
 			{
 				// we expand our cameraClipBounds by the excess tile width/height of the largest tiles to ensure we include tiles whose
@@ -115,24 +140,51 @@ namespace Nez.Tiled
 				maxY = layer.Map.WorldToTilePositionY(cameraClipBounds.Bottom);
 			}
 
-
-
 			var color = Color.White;
 			color.A = (byte)(layer.Opacity * 255);
 
-			// loop through and draw all the non-culled tiles
-			for (var y = minY; y <= maxY; y++)
-			{
-				for (var x = minX; x <= maxX; x++)
-				{
-					var tile = layer.GetTile(x, y);
-					if (tile != null)
-						RenderTile(tile, batcher, position, scale, tileWidth, tileHeight, color, layerDepth);
-				}
-			}
-		}
+            // loop through and draw all the non-culled tiles
+            for (var y = minY;y<=maxY;y++) {
+                for (var x = minX;x<=maxX;x++) {
+                    var tile = layer.GetTile(x,y);
+                    if (tile!=null)
+                        RenderTile(tile,batcher,position,scale,tileWidth,tileHeight,color,layerDepth);
+                }
+            }
+        }
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void RenderHexTile(TmxLayerTile tile,TmxLayer layer,Batcher batcher,Vector2 position,Vector2 scale,float tileWidth,float tileHeight,Color color,float layerDepth) {
+
+            var gid = tile.Gid;
+
+            var tilesetTile = tile.TilesetTile;
+            if (tilesetTile!=null&&tilesetTile.AnimationFrames.Count>0)
+                gid=tilesetTile.currentAnimationFrameGid;
+
+            var sourceRect = tile.Tileset.TileRegions[gid];
+
+            var ty = tileHeight*tile.Y;
+            float u= layer.Map.HexSideLength.Value+(tileWidth-layer.Map.HexSideLength.Value)/2;
+            float tx= u*tile.X;
+            if(tile.X%2==1) {
+                ty+=tileHeight*0.5f;
+            }
+
+            var pos = new Vector2(tx,ty)+position;
+
+            var rotation = .0f;
+            var spriteEffects = SpriteEffects.None;
+            
+            if (tile.Tileset.Image!=null)
+                batcher.Draw(tile.Tileset.Image.Texture,pos,sourceRect,color,rotation,Vector2.Zero,scale,spriteEffects,layerDepth);
+            else
+                batcher.Draw(tilesetTile.Image.Texture,pos,sourceRect,color,rotation,Vector2.Zero,scale,spriteEffects,layerDepth);
+
+        }
+
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static void RenderTile(TmxLayerTile tile, Batcher batcher, Vector2 position, Vector2 scale, float tileWidth, float tileHeight, Color color, float layerDepth)
 		{
 			var gid = tile.Gid;
@@ -201,7 +253,8 @@ namespace Nez.Tiled
 
 		public static void RenderObjectGroup(TmxObjectGroup objGroup, Batcher batcher, Vector2 position, Vector2 scale, float layerDepth)
 		{
-			if (!objGroup.Visible)
+
+            if (!objGroup.Visible)
 				return;
 
 			foreach (var obj in objGroup.Objects)
@@ -267,7 +320,8 @@ namespace Nez.Tiled
 
 		public static void RenderImageLayer(TmxImageLayer layer, Batcher batcher, Vector2 position, Vector2 scale, float layerDepth)
 		{
-			if (!layer.Visible)
+
+            if (!layer.Visible)
 				return;
 
 			var color = Color.White;
@@ -279,7 +333,8 @@ namespace Nez.Tiled
 
 		public static void RenderGroup(TmxGroup group, Batcher batcher, Vector2 position, Vector2 scale, float layerDepth)
 		{
-			if (!group.Visible)
+
+            if (!group.Visible)
 				return;
 
 			foreach (var layer in group.Layers)
@@ -300,3 +355,4 @@ namespace Nez.Tiled
 
 	}
 }
+ 
