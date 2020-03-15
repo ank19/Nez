@@ -652,6 +652,13 @@ namespace Nez.Tiled
 
 				using (var stream = TitleContainer.OpenStream(image.Source))
 					image.Texture = Texture2D.FromStream(Core.GraphicsDevice, stream);
+
+				Color[] buffer=new Color[image.Texture.Width*image.Texture.Height];
+				image.Texture.GetData(buffer);
+				for (int i = 0;i<buffer.Length;i++)
+					buffer[i]=Color.FromNonPremultiplied(buffer[i].R,buffer[i].G,buffer[i].B,buffer[i].A);
+				image.Texture.SetData(buffer);
+
 			}
 			else
 			{
